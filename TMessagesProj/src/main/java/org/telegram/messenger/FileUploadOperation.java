@@ -62,7 +62,7 @@ public class FileUploadOperation {
                 FileLog.e("tmessages", e);
             }
         }
-        currentFileId = MessagesController.random.nextLong();
+        currentFileId = (long)(MessagesController.random.nextDouble() * Long.MAX_VALUE);
         try {
             mdEnc = MessageDigest.getInstance("MD5");
         } catch (NoSuchAlgorithmException e) {

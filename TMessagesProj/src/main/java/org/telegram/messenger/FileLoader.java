@@ -14,9 +14,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.media.ExifInterface;
-import android.net.Uri;
 import android.os.Build;
-import android.os.ParcelFileDescriptor;
 
 import org.telegram.objects.MessageObject;
 import org.telegram.ui.ApplicationLoader;
@@ -25,7 +23,6 @@ import org.telegram.ui.Views.ImageReceiver;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -964,31 +961,10 @@ public class FileLoader {
         });
     }
 
-    public static Bitmap loadBitmap(String path, Uri uri, float maxWidth, float maxHeight) {
+    public static Bitmap loadBitmap(String path, float maxWidth, float maxHeight) {
         BitmapFactory.Options bmOptions = new BitmapFactory.Options();
         bmOptions.inJustDecodeBounds = true;
-        FileDescriptor fileDescriptor = null;
-        ParcelFileDescriptor parcelFD = null;
-        if (path != null) {
-            BitmapFactory.decodeFile(path, bmOptions);
-        } else if (uri != null) {
-            boolean error = false;
-            try {
-                parcelFD = ApplicationLoader.applicationContext.getContentResolver().openFileDescriptor(uri, "r");
-                fileDescriptor = parcelFD.getFileDescriptor();
-                BitmapFactory.decodeFileDescriptor(fileDescriptor, null, bmOptions);
-            } catch (Exception e) {
-                FileLog.e("tmessages", e);
-                try {
-                    if (parcelFD != null) {
-                        parcelFD.close();
-                    }
-                } catch (Exception e2) {
-                    FileLog.e("tmessages", e2);
-                }
-                return null;
-            }
-        }
+        BitmapFactory.decodeFile(path, bmOptions);
         float photoW = bmOptions.outWidth;
         float photoH = bmOptions.outHeight;
         float scaleFactor = Math.max(photoW / maxWidth, photoH / maxHeight);
@@ -998,70 +974,39 @@ public class FileLoader {
         bmOptions.inJustDecodeBounds = false;
         bmOptions.inSampleSize = (int)scaleFactor;
 
-        String exifPath = null;
-        if (path != null) {
-            exifPath = path;
-        } else if (uri != null) {
-            exifPath = Utilities.getPath(uri);
-        }
-
+        ExifInterface exif;
         Matrix matrix = null;
-
-        if (exifPath != null) {
-            ExifInterface exif;
-            try {
-                exif = new ExifInterface(exifPath);
-                int orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1);
-                matrix = new Matrix();
-                switch (orientation) {
-                    case ExifInterface.ORIENTATION_ROTATE_90:
-                        matrix.postRotate(90);
-                        break;
-                    case ExifInterface.ORIENTATION_ROTATE_180:
-                        matrix.postRotate(180);
-                        break;
-                    case ExifInterface.ORIENTATION_ROTATE_270:
-                        matrix.postRotate(270);
-                        break;
-                }
-            } catch (Exception e) {
-                FileLog.e("tmessages", e);
+        try {
+            exif = new ExifInterface(path);
+            int orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1);
+            matrix = new Matrix();
+            switch (orientation) {
+                case ExifInterface.ORIENTATION_ROTATE_90:
+                    matrix.postRotate(90);
+                    break;
+                case ExifInterface.ORIENTATION_ROTATE_180:
+                    matrix.postRotate(180);
+                    break;
+                case ExifInterface.ORIENTATION_ROTATE_270:
+                    matrix.postRotate(270);
+                    break;
             }
+        } catch (Exception e) {
+            FileLog.e("tmessages", e);
         }
 
-        Bitmap b = null;
-        if (path != null) {
-            try {
-                b = BitmapFactory.decodeFile(path, bmOptions);
-                if (b != null) {
-                    b = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), matrix, true);
-                }
-            } catch (Exception e) {
-                FileLog.e("tmessages", e);
-                FileLoader.Instance.memCache.evictAll();
-                if (b == null) {
-                    b = BitmapFactory.decodeFile(path, bmOptions);
-                }
-                if (b != null) {
-                    b = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), matrix, true);
-                }
+        Bitmap b;
+        try {
+            b = BitmapFactory.decodeFile(path, bmOptions);
+            if (b != null && matrix != null) {
+                b = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), matrix, true);
             }
-        } else if (uri != null) {
-            try {
-                b = BitmapFactory.decodeFileDescriptor(fileDescriptor, null, bmOptions);
-                if (b != null) {
-                    b = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), matrix, true);
-                }
-            } catch (Exception e) {
-                FileLog.e("tmessages", e);
-            } finally {
-                try {
-                    if (parcelFD != null) {
-                        parcelFD.close();
-                    }
-                } catch (Exception e) {
-                    FileLog.e("tmessages", e);
-                }
+        } catch (Exception e) {
+            FileLog.e("tmessages", e);
+            FileLoader.Instance.memCache.evictAll();
+            b = BitmapFactory.decodeFile(path, bmOptions);
+            if (b != null && matrix != null) {
+                b = Bitmap.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), matrix, true);
             }
         }
 
